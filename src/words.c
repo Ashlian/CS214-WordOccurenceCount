@@ -9,12 +9,17 @@
 #endif
 
 int main(int argc, char **argv) {
+    DEBUG_PRINT("running with %d args\n", argc);
     char *suffix = ".txt";
     size_t i = 1;
-    if (strcmp(argv[1], "-s")) {
+
+    // Check for suffix flag
+    if (strcmp(argv[1], "-s") == 0) {
         suffix = argv[2];
         i = 3;
     }
+
+    // Iterate through each file
     for (; i < argc; i++) {
         char *path = argv[i];
         struct stat data;
@@ -28,19 +33,19 @@ int main(int argc, char **argv) {
 
         // Check if path links to regular file or directory
         if (S_ISREG(data.st_mode)) {
-            DEBUG_PRINT("Reading file: (%s)...", path);
             read_file(path);
         } else if (S_ISDIR(data.st_mode)) {
-            DEBUG_PRINT("Reading directory: (%s)...", path);
             read_dir(path, suffix);
         } else {
-            DEBUG_PRINT("Reading other file type: (%s)", path);
+            DEBUG_PRINT("Reading other file type: (%s)\n", path);
         }
     }
     return EXIT_SUCCESS;
 }
 
 void read_file(char *path) {
+    DEBUG_PRINT("Reading file: (%s)...\n", path);
+
     char buf[BUF_SIZE];
     int bytes;
 
@@ -62,6 +67,8 @@ void read_file(char *path) {
 }
 
 void read_dir(char *path, char *suffix) {
+    DEBUG_PRINT("Reading directory: (%s)...\n", path);
+
     DIR *dir_ptr = opendir(path);
     if (!dir_ptr) {
         perror(path);
@@ -71,7 +78,14 @@ void read_dir(char *path, char *suffix) {
     struct dirent *dir_entry;
     while ((dir_entry = readdir(dir_ptr))) {
         unsigned file_type = dir_entry->d_type;
-        char *path = dir_entry->d_name;
+        char *file_name = dir_entry->d_name;
+        // Skip hidden files
+        if (file_name[0] == '.') {
+            continue;
+        }
+        // Build relative path
+        snprintf(path, strlen(path) + strlen(file_name) + 2, "%s/%s", path, file_name);
+
         if (file_type == DT_REG) {
             read_file(path);
         } else if (file_type == DT_DIR) {
