@@ -79,10 +79,18 @@ void read_dir(char *path, char *suffix) {
     while ((dir_entry = readdir(dir_ptr))) {
         unsigned file_type = dir_entry->d_type;
         char *file_name = dir_entry->d_name;
+        char *first_dot = strrchr(file_name, '.');
+        char *cur_suf = "";
         // Skip hidden files
-        if (file_name[0] == '.') {
+        if (!first_dot || first_dot == file_name) {
             continue;
         }
+        // Check suffix match
+        cur_suf = first_dot;
+        if (strcmp(cur_suf, suffix) != 0) {
+            continue;
+        }
+
         // Build relative path
         snprintf(path, strlen(path) + strlen(file_name) + 2, "%s/%s", path, file_name);
 
