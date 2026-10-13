@@ -40,6 +40,7 @@ int main(int argc, char **argv) {
             DEBUG_PRINT("Reading other file type: (%s)\n", path);
         }
     }
+    DEBUG_PRINT("Complete!\n");
     return EXIT_SUCCESS;
 }
 
@@ -48,59 +49,82 @@ void read_file(char *path) {
 
     char buf[BUF_SIZE];
     int bytes;
-
-    int fd = open(path, O_RDONLY);
-    if (fd < 0) {
+    // Open read file
+    int read_fd = open(path, O_RDONLY);
+    if (read_fd < 0) {
         perror(path);
         exit(EXIT_FAILURE);
     }
-
-    bytes = read(fd, buf, BUF_SIZE);
-    while (bytes > 0) {
-        for (size_t i = 0; i < bytes; i++) {
-            /* Process bytes - To be implemented... */
-        }
-
-        read(fd, buf, BUF_SIZE);
+    // Open write file
+    int write_fd = open("out.txt", O_WRONLY);
+    if (write_fd < 0) {
+        perror("out.txt");
+        exit(EXIT_FAILURE);
     }
-    close(fd);
+    // Process read file
+    size_t word_len = 0;
+    bytes = read(read_fd, buf, BUF_SIZE);
+
+    for (size_t i = 0; i < bytes; i++) {
+        char c = buf[i];
+        // Append if word character or hyphen with words surrounding it
+        if (is_word_char(c) || (c == '-' && word_len > 0 && is_word_char(buf[i + 1]))) {
+            write(write_fd, &c, 1);
+            word_len++;
+        } else {
+            write(write_fd, "\n", 1);
+            word_len = 0;
+        }
+    }
+
+    close(read_fd);
+    close(write_fd);
 }
 
-void read_dir(char *path, char *suffix) {
-    DEBUG_PRINT("Reading directory: (%s)...\n", path);
+void read_dir(char *parent_path, char *suffix) {
+    DEBUG_PRINT("Reading directory: (%s)...\n", parent_path);
 
-    DIR *dir_ptr = opendir(path);
+    DIR *dir_ptr = opendir(parent_path);
     if (!dir_ptr) {
-        perror(path);
+        perror(parent_path);
         exit(EXIT_FAILURE);
     }
 
     struct dirent *dir_entry;
     while ((dir_entry = readdir(dir_ptr))) {
+        // Get file type/name
         unsigned file_type = dir_entry->d_type;
         char *file_name = dir_entry->d_name;
-        char *first_dot = strrchr(file_name, '.');
+        // Build relative path
+        size_t path_len = strlen(parent_path) + strlen(file_name) + 2;
+        char *full_path = malloc(path_len);
+        if (!full_path) {
+            perror("malloc failure");
+            exit(EXIT_FAILURE);
+        }
+        snprintf(full_path, path_len, "%s/%s", parent_path, file_name);
+
+        char *dot = strrchr(file_name, '.');
         char *cur_suf = "";
         // Skip hidden files
-        if (!first_dot || first_dot == file_name) {
+        if (!dot || file_name[0] == '.') {
             continue;
         }
         // Check suffix match
-        cur_suf = first_dot;
+        cur_suf = dot;
         if (strcmp(cur_suf, suffix) != 0) {
             continue;
         }
 
-        // Build relative path
-        snprintf(path, strlen(path) + strlen(file_name) + 2, "%s/%s", path, file_name);
-
         if (file_type == DT_REG) {
-            read_file(path);
+            read_file(full_path);
         } else if (file_type == DT_DIR) {
-            read_dir(path, suffix);
+            read_dir(full_path, suffix);
         } else {
-            DEBUG_PRINT("(read_dir): other file type detected - %s", path);
+            DEBUG_PRINT("(read_dir): other file type detected - %s", full_path);
         }
     }
     closedir(dir_ptr);
 }
+
+int is_word_char(char c) { return isalpha(c) || c == '\''; }

@@ -1,3 +1,4 @@
+#include <ctype.h>
 #include <dirent.h>
 #include <fcntl.h>
 #include <stdio.h>
@@ -8,4 +9,5 @@
 #include <unistd.h>
 
 void read_file(char *path);
-void read_dir(char *path, char *suffix);
+void read_dir(char *parent_path, char *suffix);
+int is_word_char(char c);
