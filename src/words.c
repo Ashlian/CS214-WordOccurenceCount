@@ -19,6 +19,13 @@ int main(int argc, char **argv) {
         i = 3;
     }
 
+    // Open write file
+    int out_fd = open("out.txt", O_WRONLY);
+    if (out_fd < 0) {
+        perror("out.txt");
+        exit(EXIT_FAILURE);
+    }
+
     // Iterate through each file
     for (; i < argc; i++) {
         char *path = argv[i];
@@ -33,56 +40,53 @@ int main(int argc, char **argv) {
 
         // Check if path links to regular file or directory
         if (S_ISREG(data.st_mode)) {
-            read_file(path);
+            read_file(path, out_fd);
         } else if (S_ISDIR(data.st_mode)) {
-            read_dir(path, suffix);
+            read_dir(path, out_fd, suffix);
         } else {
             DEBUG_PRINT("Reading other file type: (%s)\n", path);
         }
     }
+
+    close(out_fd);
+
     DEBUG_PRINT("Complete!\n");
     return EXIT_SUCCESS;
 }
 
-void read_file(char *path) {
-    DEBUG_PRINT("Reading file: (%s)...\n", path);
+void read_file(char *path, int out_fd) {
+    DEBUG_PRINT("Reading file: %s\n", path);
 
     char buf[BUF_SIZE];
     int bytes;
     // Open read file
-    int read_fd = open(path, O_RDONLY);
-    if (read_fd < 0) {
+    int in_fd = open(path, O_RDONLY);
+    if (in_fd < 0) {
         perror(path);
         exit(EXIT_FAILURE);
     }
-    // Open write file
-    int write_fd = open("out.txt", O_WRONLY);
-    if (write_fd < 0) {
-        perror("out.txt");
-        exit(EXIT_FAILURE);
-    }
+
     // Process read file
     size_t word_len = 0;
-    bytes = read(read_fd, buf, BUF_SIZE);
+    bytes = read(in_fd, buf, BUF_SIZE);
 
     for (size_t i = 0; i < bytes; i++) {
         char c = buf[i];
         // Append if word character or hyphen with words surrounding it
         if (is_word_char(c) || (c == '-' && word_len > 0 && is_word_char(buf[i + 1]))) {
-            write(write_fd, &c, 1);
+            DEBUG_PRINT("%c", c);
+            write(out_fd, &c, 1);
             word_len++;
         } else {
-            write(write_fd, "\n", 1);
+            DEBUG_PRINT("\n");
+            write(out_fd, "\n", 1);
             word_len = 0;
         }
     }
-
-    close(read_fd);
-    close(write_fd);
 }
 
-void read_dir(char *parent_path, char *suffix) {
-    DEBUG_PRINT("Reading directory: (%s)...\n", parent_path);
+void read_dir(char *parent_path, int out_fd, char *suffix) {
+    DEBUG_PRINT("Reading directory: %s/\n", parent_path);
 
     DIR *dir_ptr = opendir(parent_path);
     if (!dir_ptr) {
@@ -117,9 +121,9 @@ void read_dir(char *parent_path, char *suffix) {
         }
 
         if (file_type == DT_REG) {
-            read_file(full_path);
+            read_file(full_path, out_fd);
         } else if (file_type == DT_DIR) {
-            read_dir(full_path, suffix);
+            read_dir(full_path, out_fd, suffix);
         } else {
             DEBUG_PRINT("(read_dir): other file type detected - %s", full_path);
         }
