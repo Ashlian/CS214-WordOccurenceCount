@@ -8,6 +8,12 @@
 #define DEBUG_PRINT(...) ((void)0)
 #endif
 
+typedef struct {
+    char *bytes;
+    size_t len;
+    size_t cap;
+} word;
+
 int main(int argc, char **argv) {
     DEBUG_PRINT("running with %d args\n", argc);
     char *suffix = ".txt";
@@ -69,20 +75,24 @@ void read_file(char *path, int out_fd) {
     // Process read file
     size_t word_len = 0;
     bytes = read(in_fd, buf, BUF_SIZE);
-
-    for (size_t i = 0; i < bytes; i++) {
-        char c = buf[i];
-        // Append if word character or hyphen with words surrounding it
-        if (is_word_char(c) || (c == '-' && word_len > 0 && is_word_char(buf[i + 1]))) {
-            DEBUG_PRINT("%c", c);
-            write(out_fd, &c, 1);
-            word_len++;
-        } else {
-            DEBUG_PRINT("\n");
-            write(out_fd, "\n", 1);
-            word_len = 0;
+    while (bytes > 0) {
+        for (size_t i = 0; i < bytes; i++) {
+            char c = buf[i];
+            // Append if word character or hyphen with words surrounding it
+            if (is_word_char(c) || (c == '-' && word_len > 0 && is_word_char(buf[i + 1]))) {
+                DEBUG_PRINT("%c", c);
+                write(out_fd, &c, 1);
+                word_len++;
+            } else {
+                DEBUG_PRINT("\n");
+                write(out_fd, "\n", 1);
+                word_len = 0;
+            }
         }
+        bytes = read(in_fd, buf, BUF_SIZE);
     }
+    DEBUG_PRINT("\n");
+    close(in_fd);
 }
 
 void read_dir(char *parent_path, int out_fd, char *suffix) {
