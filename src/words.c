@@ -8,12 +8,6 @@
 #define DEBUG_PRINT(...) ((void)0)
 #endif
 
-typedef struct {
-    char *bytes;
-    size_t len;
-    size_t cap;
-} word;
-
 int main(int argc, char **argv) {
     DEBUG_PRINT("running with %d args\n", argc);
     char *suffix = ".txt";
@@ -31,6 +25,7 @@ int main(int argc, char **argv) {
         perror("out.txt");
         exit(EXIT_FAILURE);
     }
+    Word *word = word_init(BUF_SIZE); // Init out_buffer
 
     // Iterate through each file
     for (; i < argc; i++) {
@@ -43,24 +38,23 @@ int main(int argc, char **argv) {
             perror(path);
             return EXIT_FAILURE;
         }
-
         // Check if path links to regular file or directory
         if (S_ISREG(data.st_mode)) {
-            read_file(path, out_fd);
+            read_file(path, out_fd, word);
         } else if (S_ISDIR(data.st_mode)) {
-            read_dir(path, out_fd, suffix);
+            read_dir(path, out_fd, word, suffix);
         } else {
             DEBUG_PRINT("Reading other file type: (%s)\n", path);
         }
     }
 
     close(out_fd);
-
+    word_free(word);
     DEBUG_PRINT("Complete!\n");
     return EXIT_SUCCESS;
 }
 
-void read_file(char *path, int out_fd) {
+void read_file(const char *path, int out_fd, Word *word) {
     DEBUG_PRINT("Reading file: %s\n", path);
 
     char buf[BUF_SIZE];
@@ -71,22 +65,17 @@ void read_file(char *path, int out_fd) {
         perror(path);
         exit(EXIT_FAILURE);
     }
-
     // Process read file
-    size_t word_len = 0;
     bytes = read(in_fd, buf, BUF_SIZE);
     while (bytes > 0) {
         for (size_t i = 0; i < bytes; i++) {
             char c = buf[i];
             // Append if word character or hyphen with words surrounding it
-            if (is_word_char(c) || (c == '-' && word_len > 0 && is_word_char(buf[i + 1]))) {
+            if (is_word_char(c) || (c == '-' && word->len > 0 && is_word_char(buf[i + 1]))) {
                 DEBUG_PRINT("%c", c);
-                write(out_fd, &c, 1);
-                word_len++;
             } else {
+                word_write(word, out_fd);
                 DEBUG_PRINT("\n");
-                write(out_fd, "\n", 1);
-                word_len = 0;
             }
         }
         bytes = read(in_fd, buf, BUF_SIZE);
@@ -95,7 +84,7 @@ void read_file(char *path, int out_fd) {
     close(in_fd);
 }
 
-void read_dir(char *parent_path, int out_fd, char *suffix) {
+void read_dir(const char *parent_path, int out_fd, Word *word, const char *suffix) {
     DEBUG_PRINT("Reading directory: %s/\n", parent_path);
 
     DIR *dir_ptr = opendir(parent_path);
@@ -131,9 +120,9 @@ void read_dir(char *parent_path, int out_fd, char *suffix) {
         }
 
         if (file_type == DT_REG) {
-            read_file(full_path, out_fd);
+            read_file(full_path, out_fd, word);
         } else if (file_type == DT_DIR) {
-            read_dir(full_path, out_fd, suffix);
+            read_dir(full_path, out_fd, word, suffix);
         } else {
             DEBUG_PRINT("(read_dir): other file type detected - %s", full_path);
         }
@@ -142,3 +131,54 @@ void read_dir(char *parent_path, int out_fd, char *suffix) {
 }
 
 int is_word_char(char c) { return isalpha(c) || c == '\''; }
+
+Word *word_init(size_t cap) {
+    Word *word = malloc(sizeof(Word));
+    if (!word) {
+        perror("error: word_init failed");
+        exit(EXIT_FAILURE);
+    }
+
+    word->len = 0;
+    word->cap = cap;
+    word->bytes = malloc(cap);
+    if (!word->bytes) {
+        perror("error: word_init failed");
+        free(word);
+        exit(EXIT_FAILURE);
+    }
+
+    return word;
+}
+
+int word_append(Word *word, char c) {
+    if (word->len + 1 >= word->cap) {
+        word->cap = word->cap * 2;
+
+        char *new_bytes = realloc(word->bytes, word->cap);
+        if (!new_bytes) {
+            perror("error: resizing word failed in word_append()");
+            exit(EXIT_FAILURE);
+        }
+        word->bytes = new_bytes;
+    }
+    word->bytes[word->len++] = c;
+    return 1;
+}
+
+void word_write(Word *word, int out_fd) {
+    if (word->len == 0)
+        return;
+
+    write(out_fd, word->bytes, word->len);
+    word->len = 0;
+}
+
+void word_free(Word *word) {
+    if (!word) {
+        perror("error: free_word() called with null pointer");
+        exit(EXIT_FAILURE);
+    }
+    free(word->bytes);
+    free(word);
+}

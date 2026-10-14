@@ -8,6 +8,18 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-void read_file(char *path, int out_fd);
-void read_dir(char *parent_path, int out_fd, char *suffix);
+typedef struct {
+    char *bytes;
+    size_t len;
+    size_t cap;
+} Word;
+
+Word *word_init(size_t cap);
+int word_append(Word *word, char c);
+void word_write(Word *word, int out_fd);
+void word_free(Word *word);
+
+void read_file(const char *path, int out_fd, Word *word);
+void read_dir(const char *parent_path, int out_fd, Word *word, const char *suffix);
+
 int is_word_char(char c);
