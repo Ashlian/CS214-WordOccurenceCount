@@ -51,6 +51,7 @@ int main(int argc, char **argv) {
 
     close(out_fd);
     word_free(word);
+    DEBUG_PRINT("\n");
     sort_and_count();
     DEBUG_PRINT("\nComplete!\n");
     return EXIT_SUCCESS;
@@ -93,7 +94,6 @@ void read_file(const char *path, int out_fd, Word *word) {
         }
         bytes = read(in_fd, buf, BUF_SIZE);
     }
-    DEBUG_PRINT("\n");
     close(in_fd);
 }
 
