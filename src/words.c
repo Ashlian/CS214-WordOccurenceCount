@@ -20,7 +20,7 @@ int main(int argc, char **argv) {
     }
 
     // Open write file
-    int out_fd = open("out.txt", O_WRONLY);
+    int out_fd = open("out.txt", O_WRONLY | O_CREAT | O_TRUNC);
     if (out_fd < 0) {
         perror("out.txt");
         exit(EXIT_FAILURE);
