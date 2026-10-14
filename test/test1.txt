@@ -1,2 +1,2 @@
-Hello World!This is test1.txt
-Bye
+Foo bar? Bar! Foo-bar baz--quux! 'oo? "Bar, bar."
+Super23foo.

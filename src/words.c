@@ -1,6 +1,7 @@
 #include "words.h"
 
 #define BUF_SIZE 2048
+#define TEMP_FILE "temp.txt"
 
 #ifdef DEBUG
 #define DEBUG_PRINT(...) fprintf(stderr, __VA_ARGS__)
@@ -20,9 +21,9 @@ int main(int argc, char **argv) {
     }
 
     // Open write file
-    int out_fd = open("out.txt", O_WRONLY | O_CREAT | O_TRUNC);
+    int out_fd = open(TEMP_FILE, O_WRONLY | O_CREAT | O_TRUNC);
     if (out_fd < 0) {
-        perror("out.txt");
+        perror("open temp file failed in main");
         exit(EXIT_FAILURE);
     }
     Word *word = word_init(BUF_SIZE); // Init out_buffer
@@ -50,7 +51,8 @@ int main(int argc, char **argv) {
 
     close(out_fd);
     word_free(word);
-    DEBUG_PRINT("Complete!\n");
+    sort_and_count();
+    DEBUG_PRINT("\nComplete!\n");
     return EXIT_SUCCESS;
 }
 
@@ -70,13 +72,23 @@ void read_file(const char *path, int out_fd, Word *word) {
     while (bytes > 0) {
         for (size_t i = 0; i < bytes; i++) {
             char c = buf[i];
-            // Append if word character or hyphen with words surrounding it
-            if (is_word_char(c) || (c == '-' && word->len > 0 && is_word_char(buf[i + 1]))) {
+            char next_c = '\0';
+            if (i + 1 < bytes) {
+                next_c = buf[i + 1];
+            }
+
+            if (isalpha(c)) {
+                // 1. Regular alphabet
                 word_append(word, c);
-                DEBUG_PRINT("%c", c);
+            } else if (c == '\'' && (word->len > 0 || isalpha(next_c))) {
+                // 2. Apostrophe within/around word
+                word_append(word, c);
+            } else if (c == '-' && word->len > 0 && isalpha(next_c)) {
+                // 3. Dash within word
+                word_append(word, c);
             } else {
+                // 4. Endpoints
                 word_write(word, out_fd);
-                DEBUG_PRINT("\n");
             }
         }
         bytes = read(in_fd, buf, BUF_SIZE);
@@ -127,11 +139,90 @@ void read_dir(const char *parent_path, int out_fd, Word *word, const char *suffi
         } else {
             DEBUG_PRINT("(read_dir): other file type detected - %s", full_path);
         }
+        free(full_path);
     }
     closedir(dir_ptr);
 }
 
-int is_word_char(char c) { return isalpha(c) || c == '\''; }
+void sort_and_count() {
+    int p1[2], p2[2], p3[2];
+    if (pipe(p1) < 0 || pipe(p2) < 0 || pipe(p3) < 0) {
+        perror("error: pipe creation failed");
+        exit(EXIT_FAILURE);
+    }
+    // 1. Sort the file to prepare for uniq -c
+    pid_t pid1 = fork();
+    if (pid1 < 0) {
+        perror("error: fork 1 failed");
+        exit(EXIT_FAILURE);
+    }
+    if (pid1 == 0) {
+        int in_fd = open(TEMP_FILE, O_RDONLY);
+        if (in_fd < 0) {
+            perror("open temp file failed in child 1");
+            exit(EXIT_FAILURE);
+        }
+        dup2(in_fd, STDIN_FILENO);
+        close(in_fd);
+        dup2(p1[1], STDOUT_FILENO);
+        close_pipes(p1, p2, p3);
+        execlp("sort", "sort", NULL);
+        abort();
+    }
+    // 2. Count num occurences of each word
+    pid_t pid2 = fork();
+    if (pid2 < 0) {
+        perror("error: fork 2 failed");
+        exit(EXIT_FAILURE);
+    }
+    if (pid2 == 0) {
+        dup2(p1[0], STDIN_FILENO);
+        dup2(p2[1], STDOUT_FILENO);
+        close_pipes(p1, p2, p3);
+        execlp("uniq", "uniq", "-c", NULL);
+        abort();
+    }
+    // 3. Sort by count then by word
+    pid_t pid3 = fork();
+    if (pid3 < 0) {
+        perror("error: fork 3 failed");
+        exit(EXIT_FAILURE);
+    }
+    if (pid3 == 0) {
+        dup2(p2[0], STDIN_FILENO);
+        dup2(p3[1], STDOUT_FILENO);
+        close_pipes(p1, p2, p3);
+        setenv("LC_ALL", "C", 1);
+        execlp("sort", "sort", "-k1,1nr", "-k2,2", NULL);
+        abort();
+    }
+    // 4. Switch word and counte columns
+    pid_t pid4 = fork();
+    if (pid4 < 0) {
+        perror("error: fork 4 failed");
+        exit(EXIT_FAILURE);
+    }
+    if (pid4 == 0) {
+        dup2(p3[0], STDIN_FILENO);
+        close_pipes(p1, p2, p3);
+        execlp("awk", "awk", "{print $2, $1}", NULL);
+        abort();
+    }
+    close_pipes(p1, p2, p3);
+    waitpid(pid1, NULL, 0);
+    waitpid(pid2, NULL, 0);
+    waitpid(pid3, NULL, 0);
+    waitpid(pid4, NULL, 0);
+}
+
+void close_pipes(int p1[2], int p2[2], int p3[2]) {
+    close(p1[0]);
+    close(p1[1]);
+    close(p2[0]);
+    close(p2[1]);
+    close(p3[0]);
+    close(p3[1]);
+}
 
 Word *word_init(size_t cap) {
     Word *word = malloc(sizeof(Word));
@@ -171,7 +262,7 @@ void word_write(Word *word, int out_fd) {
         return;
     // Append new line before write
     word_append(word, '\n');
-    // Write to out.txt
+    // Write to TEMP_FILE
     write(out_fd, word->bytes, word->len);
     word->len = 0; // Reset word length
 }
