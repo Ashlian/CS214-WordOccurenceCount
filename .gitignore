@@ -1,4 +1,4 @@
 build/
 *.o
 .DS_Store
-/*.txt
+temp.txt
