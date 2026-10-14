@@ -72,6 +72,7 @@ void read_file(const char *path, int out_fd, Word *word) {
             char c = buf[i];
             // Append if word character or hyphen with words surrounding it
             if (is_word_char(c) || (c == '-' && word->len > 0 && is_word_char(buf[i + 1]))) {
+                word_append(word, c);
                 DEBUG_PRINT("%c", c);
             } else {
                 word_write(word, out_fd);
@@ -151,7 +152,7 @@ Word *word_init(size_t cap) {
     return word;
 }
 
-int word_append(Word *word, char c) {
+void word_append(Word *word, char c) {
     if (word->len + 1 >= word->cap) {
         word->cap = word->cap * 2;
 
@@ -163,15 +164,16 @@ int word_append(Word *word, char c) {
         word->bytes = new_bytes;
     }
     word->bytes[word->len++] = c;
-    return 1;
 }
 
 void word_write(Word *word, int out_fd) {
     if (word->len == 0)
         return;
-
+    // Append new line before write
+    word_append(word, '\n');
+    // Write to out.txt
     write(out_fd, word->bytes, word->len);
-    word->len = 0;
+    word->len = 0; // Reset word length
 }
 
 void word_free(Word *word) {

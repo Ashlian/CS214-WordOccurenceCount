@@ -3,13 +3,10 @@ World
 This
 is
 test
-
 txt
 ByeHello
 World
 This
 is
 test
-
 txt
-'Bye'

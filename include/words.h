@@ -15,7 +15,7 @@ typedef struct {
 } Word;
 
 Word *word_init(size_t cap);
-int word_append(Word *word, char c);
+void word_append(Word *word, char c);
 void word_write(Word *word, int out_fd);
 void word_free(Word *word);
 
