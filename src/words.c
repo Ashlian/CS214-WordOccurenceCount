@@ -10,26 +10,39 @@
 
 int main(int argc, char **argv) {
     DEBUG_PRINT("running with %d args\n", argc);
+
     char *suffix = ".txt";
     size_t i = 1;
 
+    char out_file[] = "output_XXXXXX";
+    int out_fd = -1;
+    Word *word = NULL;
+    int status = EXIT_FAILURE;
+
     // Check for suffix flag
-    if (strcmp(argv[1], "-s") == 0) {
+    if (argc > 1 && strcmp(argv[1], "-s") == 0) {
+        if (argc < 3) {
+            perror("Mising suffix arg");
+            goto cleanup;
+        }
         suffix = argv[2];
         i = 3;
     }
 
     // Open write file
-    char out_file[] = "output_XXXXXX";
-    int out_fd = mkstemp(out_file);
+    out_fd = mkstemp(out_file);
     if (out_fd < 0) {
         perror("mkstemp failed");
-        exit(EXIT_FAILURE);
+        goto cleanup;
     }
     DEBUG_PRINT("Out filename is %s\n", out_file);
 
     // Init write buffer
-    Word *word = word_init(BUF_SIZE);
+    word = word_init(BUF_SIZE);
+    if (!word) {
+        perror("error: word_init failed");
+        goto cleanup;
+    }
 
     // Iterate through each file
     for (; i < argc; i++) {
@@ -39,131 +52,189 @@ int main(int argc, char **argv) {
         // Get stat of path
         int res = stat(path, &data);
         if (res < 0) {
-            word_free(word);
             perror(path);
-            return EXIT_FAILURE;
+            goto cleanup;
         }
         // Check if path links to regular file or directory
         if (S_ISREG(data.st_mode)) {
-            read_file(path, out_fd, word);
+            if (read_file(path, out_fd, word) < 0) {
+                goto cleanup;
+            }
         } else if (S_ISDIR(data.st_mode)) {
-            read_dir(path, out_fd, word, suffix);
+            if (read_dir(path, out_fd, word, suffix) < 0) {
+                goto cleanup;
+            }
         } else {
-            DEBUG_PRINT("Reading other file type: (%s)\n", path);
+            DEBUG_PRINT("Skipping other file type: (%s)\n", path);
         }
     }
 
-    word_free(word);
-    DEBUG_PRINT("\n");
-    sort_and_count(out_file);
+    if (sort_and_count(out_file) < 0) {
+        goto cleanup;
+    }
+    status = EXIT_SUCCESS;
     DEBUG_PRINT("\nComplete!\n");
-    close(out_fd);
-    remove(out_file);
-    return EXIT_SUCCESS;
+
+cleanup:
+    if (word) {
+        word_free(word);
+    }
+
+    if (out_fd >= 0) {
+        if (close(out_fd) < 0) {
+            perror("close out_file failed.");
+            status = EXIT_FAILURE;
+        }
+        if (unlink(out_file) < 0) {
+            perror("unlink out_file failed.");
+            status = EXIT_FAILURE;
+        }
+    }
+    return status;
 }
 
-void read_file(const char *path, int out_fd, Word *word) {
+int read_file(const char *path, int out_fd, Word *word) {
     DEBUG_PRINT("Reading file: %s\n", path);
 
     char buf[BUF_SIZE];
-    int bytes;
+    ssize_t bytes;
+    int status = -1;
+
     // Open read file
     int in_fd = open(path, O_RDONLY);
     if (in_fd < 0) {
         perror(path);
-        exit(EXIT_FAILURE);
+        return -1;
     }
-    // Process read file
-    bytes = read(in_fd, buf, BUF_SIZE);
 
-    while (bytes > 0) {
-        for (size_t i = 0; i < bytes; i++) {
+    // Read file
+    while ((bytes = read(in_fd, buf, BUF_SIZE)) > 0) {
+        for (ssize_t i = 0; i < bytes; i++) {
+            int res = -1;
             char c = buf[i];
             char next_c = '\0';
+
             if (i + 1 < bytes) {
                 next_c = buf[i + 1];
             }
 
             if (isalpha(c)) {
                 // 1. Regular alphabet
-                word_append(word, c);
+                res = word_append(word, c);
             } else if (c == '\'' && (word->len > 0 || isalpha(next_c))) {
                 // 2. Apostrophe within/around word
-                word_append(word, c);
+                res = word_append(word, c);
             } else if (c == '-' && word->len > 0 && isalpha(next_c)) {
                 // 3. Dash within word
-                word_append(word, c);
+                res = word_append(word, c);
             } else {
                 // 4. Endpoints
-                word_write(word, out_fd);
+                res = word_write(word, out_fd);
+            }
+
+            if (res < 0) {
+                goto cleanup;
             }
         }
-        bytes = read(in_fd, buf, BUF_SIZE);
     }
-    word_write(word, out_fd);
-    close(in_fd);
+
+    if (bytes < 0) {
+        perror("read error");
+        goto cleanup;
+    }
+
+    if (word_write(word, out_fd) < 0) {
+        goto cleanup;
+    }
+
+    status = 0;
+
+cleanup:
+    if (close(in_fd) < 0) {
+        perror("error closing in_fd");
+        status = -1;
+    }
+    return status;
 }
 
-void read_dir(const char *parent_path, int out_fd, Word *word, const char *suffix) {
+int read_dir(const char *parent_path, int out_fd, Word *word, const char *suffix) {
     DEBUG_PRINT("Reading directory: %s/\n", parent_path);
 
     DIR *dir_ptr = opendir(parent_path);
     if (!dir_ptr) {
         perror(parent_path);
-        exit(EXIT_FAILURE);
+        return -1;
     }
 
     struct dirent *dir_entry;
+    int status = -1;
+    char *full_path = NULL;
+
     while ((dir_entry = readdir(dir_ptr))) {
         // Get file type/name
-        unsigned file_type = dir_entry->d_type;
-        char *file_name = dir_entry->d_name;
+        unsigned char file_type = dir_entry->d_type;
+        const char *file_name = dir_entry->d_name;
+
+        // Skip hidden files
+        if (file_name[0] == '.') {
+            continue;
+        }
+
+        // Check suffix match
+        if (file_type == DT_REG) {
+            const char *dot = strrchr(file_name, '.');
+            if (!dot || strcmp(dot, suffix) != 0)
+                continue;
+        }
+
         // Build relative path
         size_t path_len = strlen(parent_path) + strlen(file_name) + 2;
-        char *full_path = malloc(path_len);
+        full_path = malloc(path_len);
+
         if (!full_path) {
             perror("malloc failure");
-            exit(EXIT_FAILURE);
+            goto cleanup;
         }
+
         snprintf(full_path, path_len, "%s/%s", parent_path, file_name);
 
-        char *dot = strrchr(file_name, '.');
-        char *cur_suf = "";
-        // Skip hidden files
-        if (!dot || file_name[0] == '.') {
-            free(full_path);
-            continue;
-        }
-        // Check suffix match
-        cur_suf = dot;
-        if (strcmp(cur_suf, suffix) != 0) {
-            free(full_path);
-            continue;
-        }
-
         if (file_type == DT_REG) {
-            read_file(full_path, out_fd, word);
+            if (read_file(full_path, out_fd, word) < 0) {
+                goto cleanup;
+            }
         } else if (file_type == DT_DIR) {
-            read_dir(full_path, out_fd, word, suffix);
+            if (read_dir(full_path, out_fd, word, suffix) < 0) {
+                goto cleanup;
+            }
         } else {
             DEBUG_PRINT("(read_dir): other file type detected - %s", full_path);
         }
+
         free(full_path);
+        full_path = NULL;
     }
+
+    status = 0;
+
+cleanup:
+    free(full_path);
     closedir(dir_ptr);
+    return status;
 }
 
-void sort_and_count(char *out_file) {
+int sort_and_count(char *out_file) {
+    DEBUG_PRINT("Sorting and counting... \n\n");
+
     int p1[2], p2[2], p3[2];
     if (pipe(p1) < 0 || pipe(p2) < 0 || pipe(p3) < 0) {
         perror("error: pipe creation failed");
-        exit(EXIT_FAILURE);
+        return -1;
     }
     // 1. Sort the file to prepare for uniq -c
     pid_t pid1 = fork();
     if (pid1 < 0) {
         perror("error: fork 1 failed");
-        exit(EXIT_FAILURE);
+        return -1;
     }
     if (pid1 == 0) {
         int in_fd = open(out_file, O_RDONLY);
@@ -182,7 +253,7 @@ void sort_and_count(char *out_file) {
     pid_t pid2 = fork();
     if (pid2 < 0) {
         perror("error: fork 2 failed");
-        exit(EXIT_FAILURE);
+        return -1;
     }
     if (pid2 == 0) {
         dup2(p1[0], STDIN_FILENO);
@@ -195,7 +266,7 @@ void sort_and_count(char *out_file) {
     pid_t pid3 = fork();
     if (pid3 < 0) {
         perror("error: fork 3 failed");
-        exit(EXIT_FAILURE);
+        return -1;
     }
     if (pid3 == 0) {
         dup2(p2[0], STDIN_FILENO);
@@ -209,7 +280,7 @@ void sort_and_count(char *out_file) {
     pid_t pid4 = fork();
     if (pid4 < 0) {
         perror("error: fork 4 failed");
-        exit(EXIT_FAILURE);
+        return -1;
     }
     if (pid4 == 0) {
         dup2(p3[0], STDIN_FILENO);
@@ -222,6 +293,8 @@ void sort_and_count(char *out_file) {
     waitpid(pid2, NULL, 0);
     waitpid(pid3, NULL, 0);
     waitpid(pid4, NULL, 0);
+
+    return 0;
 }
 
 void close_pipes(int p1[2], int p2[2], int p3[2]) {
@@ -236,51 +309,57 @@ void close_pipes(int p1[2], int p2[2], int p3[2]) {
 Word *word_init(size_t cap) {
     Word *word = malloc(sizeof(Word));
     if (!word) {
-        perror("error: word_init failed");
-        exit(EXIT_FAILURE);
+        return NULL;
     }
 
     word->len = 0;
     word->cap = cap;
     word->bytes = malloc(cap);
     if (!word->bytes) {
-        perror("error: word_init failed");
-        free(word);
-        exit(EXIT_FAILURE);
+        return NULL;
     }
 
     return word;
 }
 
-void word_append(Word *word, char c) {
+int word_append(Word *word, char c) {
     if (word->len + 1 >= word->cap) {
         word->cap = word->cap * 2;
 
         char *new_bytes = realloc(word->bytes, word->cap);
         if (!new_bytes) {
-            perror("error: resizing word failed in word_append()");
-            exit(EXIT_FAILURE);
+            perror("resizing word failed in word_append()");
+            return -1;
         }
         word->bytes = new_bytes;
     }
+
     word->bytes[word->len++] = c;
+    return 0;
 }
 
-void word_write(Word *word, int out_fd) {
+int word_write(Word *word, int out_fd) {
     if (word->len == 0)
-        return;
+        return 0;
+
     // Append new line before write
-    word_append(word, '\n');
+    if (word_append(word, '\n') < 0) {
+        return -1;
+    }
+
     // Write to out_file
-    write(out_fd, word->bytes, word->len);
+    if (write(out_fd, word->bytes, word->len) < 0) {
+        word->len--;
+        return -1;
+    }
     word->len = 0; // Reset word length
+    return 0;
 }
 
 void word_free(Word *word) {
-    if (!word) {
-        perror("error: free_word() called with null pointer");
-        exit(EXIT_FAILURE);
-    }
+    if (!word)
+        return;
+
     free(word->bytes);
     free(word);
 }
