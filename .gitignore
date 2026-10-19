@@ -1,4 +1,4 @@
 build/
 *.o
 .DS_Store
-temp.txt
+output*

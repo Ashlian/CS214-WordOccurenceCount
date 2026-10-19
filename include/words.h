@@ -24,5 +24,4 @@ void read_file(const char *path, int out_fd, Word *word);
 void read_dir(const char *parent_path, int out_fd, Word *word, const char *suffix);
 void sort_and_count(char *out_file);
 
-int is_word_char(char c);
 void close_pipes(int p1[2], int p2[2], int p3[2]);
