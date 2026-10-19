@@ -1,3 +1,4 @@
+#define _DEFAULT_SOURCE
 #include <ctype.h>
 #include <dirent.h>
 #include <fcntl.h>
