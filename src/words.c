@@ -21,7 +21,7 @@ int main(int argc, char **argv) {
     }
 
     // Open write file
-    int out_fd = open(TEMP_FILE, O_WRONLY | O_CREAT | O_TRUNC, 0666);
+    int out_fd = open(TEMP_FILE, O_WRONLY | O_CREAT | O_TRUNC);
     if (out_fd < 0) {
         perror("open temp file failed in main");
         exit(EXIT_FAILURE);
