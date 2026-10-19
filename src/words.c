@@ -1,7 +1,6 @@
 #include "words.h"
 
 #define BUF_SIZE 2048
-#define TEMP_FILE "temp.txt"
 
 #ifdef DEBUG
 #define DEBUG_PRINT(...) fprintf(stderr, __VA_ARGS__)
@@ -21,12 +20,16 @@ int main(int argc, char **argv) {
     }
 
     // Open write file
-    int out_fd = open(TEMP_FILE, O_WRONLY | O_CREAT | O_TRUNC);
+    char out_file[] = "output_XXXXXX";
+    int out_fd = mkstemp(out_file);
     if (out_fd < 0) {
-        perror("open temp file failed in main");
+        perror("mkstemp failed");
         exit(EXIT_FAILURE);
     }
-    Word *word = word_init(BUF_SIZE); // Init out_buffer
+    DEBUG_PRINT("Out filename is %s\n", out_file);
+
+    // Init write buffer
+    Word *word = word_init(BUF_SIZE);
 
     // Iterate through each file
     for (; i < argc; i++) {
@@ -50,11 +53,12 @@ int main(int argc, char **argv) {
         }
     }
 
-    close(out_fd);
     word_free(word);
     DEBUG_PRINT("\n");
-    sort_and_count();
+    sort_and_count(out_file);
     DEBUG_PRINT("\nComplete!\n");
+    close(out_fd);
+    remove(out_file);
     return EXIT_SUCCESS;
 }
 
@@ -149,7 +153,7 @@ void read_dir(const char *parent_path, int out_fd, Word *word, const char *suffi
     closedir(dir_ptr);
 }
 
-void sort_and_count() {
+void sort_and_count(char *out_file) {
     int p1[2], p2[2], p3[2];
     if (pipe(p1) < 0 || pipe(p2) < 0 || pipe(p3) < 0) {
         perror("error: pipe creation failed");
@@ -162,7 +166,7 @@ void sort_and_count() {
         exit(EXIT_FAILURE);
     }
     if (pid1 == 0) {
-        int in_fd = open(TEMP_FILE, O_RDONLY);
+        int in_fd = open(out_file, O_RDONLY);
         if (in_fd < 0) {
             perror("open temp file failed in child 1");
             exit(EXIT_FAILURE);
@@ -267,7 +271,7 @@ void word_write(Word *word, int out_fd) {
         return;
     // Append new line before write
     word_append(word, '\n');
-    // Write to TEMP_FILE
+    // Write to out_file
     write(out_fd, word->bytes, word->len);
     word->len = 0; // Reset word length
 }
