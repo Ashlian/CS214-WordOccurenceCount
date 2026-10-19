@@ -21,7 +21,7 @@ int main(int argc, char **argv) {
     }
 
     // Open write file
-    int out_fd = open(TEMP_FILE, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    int out_fd = open(TEMP_FILE, O_WRONLY | O_CREAT | O_TRUNC, 0666);
     if (out_fd < 0) {
         perror("open temp file failed in main");
         exit(EXIT_FAILURE);
@@ -71,6 +71,7 @@ void read_file(const char *path, int out_fd, Word *word) {
     }
     // Process read file
     bytes = read(in_fd, buf, BUF_SIZE);
+
     while (bytes > 0) {
         for (size_t i = 0; i < bytes; i++) {
             char c = buf[i];
@@ -95,6 +96,7 @@ void read_file(const char *path, int out_fd, Word *word) {
         }
         bytes = read(in_fd, buf, BUF_SIZE);
     }
+    word_write(word, out_fd);
     close(in_fd);
 }
 
