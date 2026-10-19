@@ -36,6 +36,7 @@ int main(int argc, char **argv) {
         // Get stat of path
         int res = stat(path, &data);
         if (res < 0) {
+            word_free(word);
             perror(path);
             return EXIT_FAILURE;
         }
