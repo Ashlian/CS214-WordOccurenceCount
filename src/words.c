@@ -124,11 +124,13 @@ void read_dir(const char *parent_path, int out_fd, Word *word, const char *suffi
         char *cur_suf = "";
         // Skip hidden files
         if (!dot || file_name[0] == '.') {
+            free(full_path);
             continue;
         }
         // Check suffix match
         cur_suf = dot;
         if (strcmp(cur_suf, suffix) != 0) {
+            free(full_path);
             continue;
         }
 
