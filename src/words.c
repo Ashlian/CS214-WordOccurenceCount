@@ -20,13 +20,14 @@ int main(int argc, char **argv) {
     int status = EXIT_FAILURE;
 
     // Check for suffix flag
-    if (argc > 1 && strcmp(argv[1], "-s") == 0) {
-        if (argc < 3) {
-            perror("Mising suffix arg");
-            goto cleanup;
+    if (argc > 1 && argv[1][0] == '-' && argv[1][1] == 's') {
+        if (strlen(argv[1]) > 2) {
+            suffix = argv[1] + 2;
+            i = 2;
+        } else {
+            suffix = argv[2];
+            i = 3;
         }
-        suffix = argv[2];
-        i = 3;
     }
 
     // Open write file
