@@ -1,0 +1,4 @@
+This is a bait file for the md suffix 
+to see if this will be counted
+as md file even through
+its txt. 

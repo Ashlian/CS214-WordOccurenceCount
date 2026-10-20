@@ -1,0 +1,4 @@
+This file is inside a subdirectory that
+should be traveled to
+if the recursive directory traversal
+works correctly

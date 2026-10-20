@@ -1,0 +1,5 @@
+apple Apple 'zebra an and
+dog Dog 'dog zebra
+cat Cat cat Cat
+zebra dog Dog 'dog
+the the cat Cat the the

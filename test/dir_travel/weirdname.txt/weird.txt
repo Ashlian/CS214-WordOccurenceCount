@@ -1,0 +1,3 @@
+Weird file that is in weird directory because the weirdness
+comes from the .txt at the end. Should still
+be read tho since a directory is directory even if weird

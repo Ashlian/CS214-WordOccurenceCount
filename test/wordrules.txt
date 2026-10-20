@@ -1,0 +1,5 @@
+foo Foo FOO a2z hello, world! (wait!) semi;colon
+'oo don't dogs' it''s
+foo-bar a-b-c foo--bar end- -start x-'y
+tab	separated  double  spaces
+last

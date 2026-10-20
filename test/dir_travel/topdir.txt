@@ -1,0 +1,4 @@
+This file is in the parent directory
+and needs no directory travesal to
+access and should be read after all 
+the subdirectories are traveled through
