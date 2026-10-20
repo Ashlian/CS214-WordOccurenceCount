@@ -20,11 +20,16 @@ int main(int argc, char **argv) {
     int status = EXIT_FAILURE;
 
     // Check for suffix flag
-    if (argc > 1 && argv[1][0] == '-' && argv[1][1] == 's') {
+    if (argc > 1 && strncmp(argv[1], "-s", 2) == 0) {
         if (strlen(argv[1]) > 2) {
             suffix = argv[1] + 2;
             i = 2;
         } else {
+            if (argc < 3) {
+                perror("Missing suffix argument");
+                goto cleanup;
+            }
+
             suffix = argv[2];
             i = 3;
         }
@@ -47,26 +52,27 @@ int main(int argc, char **argv) {
 
     // Iterate through each file
     for (; i < argc; i++) {
-        char *path = argv[i];
+        char *file = argv[i];
         struct stat data;
 
-        // Get stat of path
-        int res = stat(path, &data);
+        // Get stat of file
+        int res = stat(file, &data);
         if (res < 0) {
-            perror(path);
+            perror(file);
             goto cleanup;
         }
-        // Check if path links to regular file or directory
+        // Check if regular file or directory
         if (S_ISREG(data.st_mode)) {
-            if (read_file(path, out_fd, word) < 0) {
+
+            if (read_file(file, out_fd, word) < 0) {
                 goto cleanup;
             }
         } else if (S_ISDIR(data.st_mode)) {
-            if (read_dir(path, out_fd, word, suffix) < 0) {
+            if (read_dir(file, out_fd, word, suffix) < 0) {
                 goto cleanup;
             }
         } else {
-            DEBUG_PRINT("Skipping other file type: (%s)\n", path);
+            DEBUG_PRINT("Skipping other file type: (%s)\n", file);
         }
     }
 
@@ -183,9 +189,16 @@ int read_dir(const char *parent_path, int out_fd, Word *word, const char *suffix
 
         // Check suffix match
         if (file_type == DT_REG) {
-            const char *dot = strrchr(file_name, '.');
-            if (!dot || strcmp(dot, suffix) != 0)
+            size_t suf_len = strlen(suffix);
+            size_t file_len = strlen(file_name);
+
+            if (file_len < suf_len)
                 continue;
+
+            const char *cur_suf = file_name + file_len - suf_len;
+            if (strcmp(cur_suf, suffix) != 0) {
+                continue;
+            }
         }
 
         // Build relative path
