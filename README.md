@@ -7,8 +7,8 @@ By: Jeffrey Lu (jl3925) & Alexander Wong (amw408)
 From the project root, run `make` to build to make the program. The executables are placed in the `build` directory. To remove all build outputs, run `make clean`
 
 The program is run directly from the project root through `./build/words [-s suffix] file_or_directory`
-- When inputting files, the program reads through the inputs and lists the words in descending order.
-- When inputting direectories, the program recursively traverses through all subdirectories and reads all target files and lists the words in descending order.
+- To read files, the program reads through the args and lists the words in descending order.
+- To read directories, the program recursively traverses through all subdirectories and reads all target files and lists the words in descending order.
 - The optional `-s` flag can be added with a file suffix added after to read only files of that type.
 
 # Design Notes: 
