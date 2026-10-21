@@ -3,247 +3,62 @@ Project 2 of CS214 Systems Programming
 
 By: Jeffrey Lu (jl3925) & Alexander Wong (amw408)
 
-Run Instructions:
+# Run Instructions:
+From the project root, run `make` to build to make the program. The executables are placed in the `build` directory. To remove all build outputs, run `make clean`
 
-Design Notes: In order to 
+The program is run directly from the project root through `./build/words [-s suffix] file_or_directory`
+- When inputting files, the program reads through the inputs and lists the words in descending order.
+- When inputting direectories, the program recursively traverses through all subdirectories and reads all target files and lists the words in descending order.
+- The optional `-s` flag can be added with a file suffix added after to read only files of that type.
 
-Test Plan:
+# Design Notes: 
+`words` processes its input in two stages: first it collects every word from the input files, then it counts and sorts them.
 
-1. Word rules: one file mixing case variants (“foo”, “Foo”), digits inside words (“a2z”), assorted punctuation, apostrophes at the start, middle, and end of words, valid hyphens (“foo-bar”, “a-b-c”), invalid hyphens (“foo--bar”, “foo-”, “-foo”, “foo-‘bar”), and a mix of spaces, tabs, and CRLF line endings, with no trailing newline. Verifies word splitting, case sensitivity, and that the last word is counted.
+1. **Gathering input:** The program reads the optional `-s` suffix and then goes through each argument. Files named on the command line are always read. Directories are searched recursively, skipping hidden entries and reading only files whose names end with the chosen suffix.
+2. **Extracting words:** Each file is read in fixed-size chunks and scanned character by character, applying the spec's rules for letters, apostrophes, and hyphens. Words are built in a buffer that grows as needed, so there is no limit on word length, and words that span two chunks are handled correctly. Every completed word, from every file, is written on its own line to a single temporary file.
+3. **Counting and sorting:** Once all input has been read, the temporary file is passed through a pipeline of standard Unix tools: `sort` groups identical words together, `uniq -c` counts each group, a second `sort` orders the results by count (highest first) and then alphabetically, and `awk` prints each line as the word followed by its count.
+4. **Cleanup:** The temporary file is deleted before the program exits. If any file or directory can't be read, the program reports the error and stops.
 
-foo 2
-'oo 1
-'y 1
-FOO 1
-Foo 1
-a 1
-a-b-c 1
-bar 1
-colon 1
-dogs' 1
-don't 1
-double 1
-end 1
-foo-bar 1
-hello 1
-it''s 1
-last 1
-semi 1
-separated 1
-spaces 1
-start 1
-tab 1
-wait 1
-world 1
-x 1
-z 1
+# Test Strategy:
 
-3. Sorting and output format: one file with words repeated different numbers of times, including several ties that mix uppercase, lowercase, and apostrophe-initial words. Verifies descending count order, lexicographic tie-breaking, and the “word count” line format.
+Here are the following tests we used to ensure correctness of the program:
 
-the 4
-Cat 3
-cat 3
-'dog 2
-Dog 2
-dog 2
-zebra 2
-'zebra 1
-Apple 1
-an 1
-and 1
-apple 1
+**Test 1: Word rules**
+- **How it's run:** `words` is given a single file mixing case variants, digits inside words, assorted punctuation, apostrophes at the start, middle, and end of words, valid and invalid hyphen placements, and a mix of spaces, tabs, and CRLF line endings, with no trailing newline.
+- **Expected behavior:** Prints each word found under the rules: case variants are counted separately, digits and punctuation split words, apostrophes are kept anywhere in a word, hyphens are kept only between two letters, and all whitespace separates words. Also, the final word is counted even without a trailing newline.
+- **Why this test:** Word splitting is the core of the program, and the hyphen and apostrophe rules have the most edge cases. Combining them in one file checks that the rules work together, not just individually.
 
-4. Buffer boundaries: one large file containing a word longer than the read buffer, words and a hyphen placed to straddle buffer boundaries, and enough distinct words to force the word map to grow. Verifies parsing across read() calls, unbounded word length, large inputs, and correct counts with many unique words.
+**Test 2: Sorting and output format**
+- **How it's run:** `words` is given a single file with words repeated different numbers of times, in an order unrelated to their final ranking, including several ties that mix uppercase, lowercase, and apostrophe-initial words.
+- **Expected behavior:** Prints words in descending order of count, with ties broken in order: apostrophe-initial words, then uppercase, then lowercase. Each line is the word, one space, and its count.
+- **Why this test:** Correct output for this requires actual sorting, and ensures that ties at several counts follow the tie-breaking rule correctly
 
-Anothersuperlongwordthatshouldbeallreadasoneword 1
-Hithisisasuperlongwordthatissupposedtobelargerthanthebuffersizetotestdynamicbuffersize 1
-dadjakdadad 1
-jumbleofcharactersjmdoinwasdnwausdwasdwdwansdwghkadda 1
+**Test 3: Buffer boundaries**
+- **How it's run:** `words` is given a single large file containing a word longer than the read buffer, words and a hyphen placed to straddle buffer boundaries, and many distinct words.
+- **Expected behavior:** Counts every word correctly, including the oversized word and the words split across two `read()` calls.
+- **Why this test:** Files are read in fixed-size chunks, so a word or hyphen split across chunks is easy to mishandle. It also checks that there's no maximum word length and that large inputs with many unique words are counted correctly.
 
-5. Empty input: an empty file and a file of only digits, whitespace, and punctuation given together. Verifies that no output is produced and nothing crashes.
+**Test 4: Empty input**
+- **How it's run:** `words` is given two files together: one completely empty, and one containing only digits, whitespace, and punctuation.
+- **Expected behavior:** Prints nothing and exits normally.
+- **Why this test:** Checks that files with no words don't cause crashes or produce stray output.
 
-Nothing
+**Test 5: Multiple file arguments**
+- **How it's run:** `words` is given several files that share some words, including one whose name begins with a period and one with no extension.
+- **Expected behavior:** Prints combined counts across all files, including the hidden and extensionless ones.
+- **Why this test:** Counts must be totaled across files rather than kept per file, and files named on the command line must be processed regardless of their names.
 
-6. Multiple file arguments: several files sharing some words, including one starting with a period and one with no extension. Verifies counts are totaled across files and that explicit files are processed regardless of name.
+**Test 6: Directory traversal**
+- **How it's run:** `words` is given a directory tree containing nested subdirectories several levels deep, matching and non-matching file names, hidden files and hidden subdirectories, subdirectories whose names don't end in the suffix, an empty subdirectory, and a file sharing its name with one in the working directory. It is run once with the directory name 
+- **Expected behavior:** Processes only regular `.txt` files, recursing into all non-hidden subdirectories. Hidden entries are skipped, the empty subdirectory causes no errors, and the file inside the tree is read instead of the one with the same name in the working directory. 
+- **Why this test:** Covers recursion, default suffix filtering, the hidden-entry exception, and correct path construction
 
-file 8
-that 6
-the 6
-to 5
-is 4
-multi 4
-I 3
-a 3
-enough 3
-just 3
-other 3
-test 3
-this 3
-Hi 2
-am 2
-be 2
-of 2
-part 2
-so 2
-with 2
-writing 2
-However 1
-That's 1
-This 1
-again 1
-also 1
-anything 1
-can 1
-come 1
-differently 1
-does 1
-filler 1
-in 1
-isn't 1
-it 1
-little 1
-long 1
-make 1
-maybe 1
-mean 1
-meaningful 1
-mind 1
-need 1
-not 1
-order 1
-overlap 1
-overlaps 1
-probably 1
-random 1
-same 1
-should 1
-supposed 1
-than 1
-things 1
-unique 1
-why 1
-words 1
-write 1
+**Test 7: Suffix option**
+- **How it's run:** `words` is given the same directory tree, with the `-s .md` flag being put into the command to read only md files. It is run three times, with `-s .md`, `-s.md`, and `-s md`.
+- **Expected behavior:** All three runs give the same output, only reading the words from the md files in the directory tree.
+- **Why this test:** Checks both forms of the `-s` argument, and that suffix filtering applies only to directory traversal.
 
-7. Directory traversal: a directory tree containing nested subdirectories several levels deep, matching and non-matching file names, hidden files and hidden subdirectories, subdirectories whose names don’t end in the suffix, an empty subdirectory, and a file sharing its name with one in the working directory. Run with and without a trailing slash. Verifies recursion, suffix filtering with the default .txt, skipping hidden entries, and correct path construction.
-
-the 19
-directory 14
-file 14
-in 10
-deepest 7
-is 7
-This 5
-be 4
-if 4
-to 4
-a 3
-all 3
-and 3
-that 3
-through 3
-even 2
-md 2
-read 2
-should 2
-traveled 2
-travesal 2
-txt 2
-weird 2
-I 1
-Should 1
-Weird 1
-access 1
-actually 1
-after 1
-are 1
-as 1
-at 1
-bait 1
-because 1
-comes 1
-correctly 1
-counted 1
-deep 1
-directories 1
-don't 1
-else 1
-end 1
-files 1
-for 1
-from 1
-goes 1
-here 1
-inside 1
-its 1
-know 1
-needs 1
-no 1
-of 1
-parent 1
-recursive 1
-scans 1
-see 1
-since 1
-still 1
-subdirectories 1
-subdirectory 1
-suffix 1
-tests 1
-this 1
-tho 1
-traversal 1
-tree 1
-weirdness 1
-what 1
-will 1
-works 1
-write 1
-
-
-8. Suffix option: the same directory tree from test 7, plus some .md files and a file ending in “md” without a dot, run with -s .md, -s.md, and -s md. Verifies both argument forms behave identically, no dot is inserted, and an explicitly named .txt file is still processed alongside the directory.
-
-md 6
-the 6
-file 4
-This 3
-is 3
-not 3
-should 3
-an 2
-and 2
-be 2
-command 2
-default 2
-in 2
-read 2
-suffix 2
-that 2
-to 2
-txt 2
-'typo 1
-'words 1
-More 1
-actual 1
-at 1
-but 1
-directory 1
-filler 1
-its 1
-ne 1
-now 1
-only 1
-pad 1
-parent 1
-similarly 1
-this 1
-with 1
-
-
-9. Robustness: a run including a nonexistent file and an unreadable file alongside valid ones, with all tests also run under AddressSanitizer or Valgrind. Verifies error handling without crashing, continued processing of remaining arguments, and memory correctness.
-
-File perms denied
-
-chmod 000 test/robust/locked.txt;
-chmod 000 test/robust/subdir/noread.txt;
-chmod 000 test/robust/subdir/closed  
+**Test 8: Mix of invalid and valid files**
+- **How it's run:** `words` is given a nonexistent file and an unreadable file (with permissions removed using `chmod 000`, run as a non-root user) alongside valid files. All tests are also run under AddressSanitizer
+- **Expected behavior:** Reports an error to standard error for the missing and unreadable files without crashing, and cleans up its temporary file. No memory errors or leaks are reported in any test.
+- **Why this test:** This checks that failures are handled in a controlled, documented way. Running under a memory checker catches leaks and invalid accesses, especially in error paths.

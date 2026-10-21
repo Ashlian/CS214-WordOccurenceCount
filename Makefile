@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -std=c99 -g -Wall -fsanitize=address,undefined -Iinclude -DDEBUG
+CFLAGS = -std=c99 -g -Wall -fsanitize=address,undefined -Iinclude
 
 all: build/words
 
